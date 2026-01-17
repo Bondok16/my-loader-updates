@@ -1,1 +1,1 @@
-SystemStatus:0x1
+SystemStatus:0x0
