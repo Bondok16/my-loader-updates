@@ -1,0 +1,347 @@
+-------------------------------------------------
+-- SERVICES
+-------------------------------------------------
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+
+-------------------------------------------------
+-- VARIABLES
+-------------------------------------------------
+local connections = { SemiInvisible = {} }
+local isInvisible = false
+local clone, oldRoot, hip, animTrack, connection
+local walking = false
+local walkSpeedMultiplier = 1 -- ثابت
+local yOffset = 0.6 -- ثابت تحت الشخصية
+
+-------------------------------------------------
+-- GUI
+-------------------------------------------------
+for _, gui in pairs(game.CoreGui:GetChildren()) do
+	if gui.Name == "ok" then gui:Destroy() end
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ok"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = game.CoreGui
+
+-- Main Frame
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Size = UDim2.new(0, 220, 0, 150)
+mainFrame.Position = UDim2.new(0.5, -110, 0.7, -75)
+mainFrame.BackgroundColor3 = Color3.fromRGB(0,0,0)
+mainFrame.Active = true
+mainFrame.Draggable = true
+Instance.new("UICorner", mainFrame)
+
+-- Rainbow Outline (رفيع)
+local outline = Instance.new("UIStroke", mainFrame)
+outline.Thickness = 1.5
+outline.Color = Color3.fromRGB(255,0,0)
+
+-- Animate Rainbow Outline
+local hue = 0
+RunService.RenderStepped:Connect(function()
+	hue = (hue + 0.005) % 1
+	outline.Color = Color3.fromHSV(hue,1,1)
+end)
+
+-- Title
+local titleLabel = Instance.new("TextLabel", mainFrame)
+titleLabel.Size = UDim2.new(1,0,0,28)
+titleLabel.Position = UDim2.new(0,0,0,0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "xbondok72"
+titleLabel.TextColor3 = Color3.fromHSV(0,1,1)
+titleLabel.TextSize = 20
+titleLabel.Font = Enum.Font.GothamBold
+
+-- Animate Title Rainbow
+RunService.RenderStepped:Connect(function()
+	hue = (hue + 0.002) % 1
+	titleLabel.TextColor3 = Color3.fromHSV(hue,1,1)
+end)
+
+-- Invisible Toggle
+local toggleBtn = Instance.new("TextButton", mainFrame)
+toggleBtn.Size = UDim2.new(0.9,0,0,36)
+toggleBtn.Position = UDim2.new(0.05,0,0.18,0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+toggleBtn.Text = "invisible off"
+toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
+toggleBtn.TextSize = 17
+Instance.new("UICorner", toggleBtn)
+
+-- WalkToBase Button
+local walkBtn = Instance.new("TextButton", mainFrame)
+walkBtn.Size = UDim2.new(0.9,0,0,36)
+walkBtn.Position = UDim2.new(0.05,0,0.48,0)
+walkBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+walkBtn.Text = "▶ WALK TO BASE"
+walkBtn.TextColor3 = Color3.fromRGB(255,255,255)
+walkBtn.TextSize = 17
+Instance.new("UICorner", walkBtn)
+
+-- Status Label
+local status = Instance.new("TextLabel", mainFrame)
+status.Size = UDim2.new(1,0,0,20)
+status.Position = UDim2.new(0,0,0.8,0)
+status.BackgroundTransparency = 1
+status.Text = "Idle"
+status.TextColor3 = Color3.fromRGB(255,255,255)
+status.TextSize = 14
+status.Font = Enum.Font.Gotham
+
+-------------------------------------------------
+-- FUNCTIONS (Ultra Stable Invisible + GodMode)
+-------------------------------------------------
+local function removeFolders()
+	local playerFolder = Workspace:FindFirstChild(player.Name)
+	if not playerFolder then return end
+
+	local doubleRig = playerFolder:FindFirstChild("DoubleRig")
+	if doubleRig then doubleRig:Destroy() end
+	local constraints = playerFolder:FindFirstChild("Constraints")
+	if constraints then constraints:Destroy() end
+
+	local childAddedConn = playerFolder.ChildAdded:Connect(function(child)
+		if child.Name == "DoubleRig" or child.Name == "Constraints" then
+			child:Destroy()
+		end
+	end)
+	table.insert(connections.SemiInvisible, childAddedConn)
+end
+
+local function doClone()
+	if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+		hip = player.Character.Humanoid.HipHeight
+		oldRoot = player.Character:FindFirstChild("HumanoidRootPart")
+		if not oldRoot then return false end
+
+		local tempParent = Instance.new("Model")
+		tempParent.Parent = game
+		player.Character.Parent = tempParent
+
+		clone = oldRoot:Clone()
+		clone.Parent = player.Character
+		oldRoot.Parent = Workspace.CurrentCamera
+		clone.CFrame = oldRoot.CFrame
+		player.Character.PrimaryPart = clone
+		player.Character.Parent = Workspace
+
+		for _, v in pairs(player.Character:GetDescendants()) do
+			if v:IsA("Weld") or v:IsA("Motor6D") then
+				if v.Part0 == oldRoot then v.Part0 = clone end
+				if v.Part1 == oldRoot then v.Part1 = clone end
+			end
+		end
+
+		tempParent:Destroy()
+		return true
+	end
+end
+
+local function revertClone()
+	if not oldRoot or not player.Character then return end
+
+	local tempParent = Instance.new("Model")
+	tempParent.Parent = game
+	player.Character.Parent = tempParent
+
+	oldRoot.Parent = player.Character
+	player.Character.PrimaryPart = oldRoot
+	player.Character.Parent = Workspace
+
+	for _, v in pairs(player.Character:GetDescendants()) do
+		if v:IsA("Weld") or v:IsA("Motor6D") then
+			if v.Part0 == clone then v.Part0 = oldRoot end
+			if v.Part1 == clone then v.Part1 = oldRoot end
+		end
+	end
+
+	if clone then
+		local cf = clone.CFrame
+		clone:Destroy()
+		oldRoot.CFrame = cf
+	end
+
+	player.Character.Humanoid.HipHeight = hip
+	clone, oldRoot = nil, nil
+end
+
+local function animationTrickery()
+	if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+		local anim = Instance.new("Animation")
+		anim.AnimationId = "rbxassetid://18537363391"
+
+		local humanoid = player.Character.Humanoid
+		local animator = humanoid:FindFirstChild("Animator") or Instance.new("Animator", humanoid)
+
+		animTrack = animator:LoadAnimation(anim)
+		animTrack.Priority = Enum.AnimationPriority.Action4
+		animTrack:Play(0, 1, 0)
+		anim:Destroy()
+
+		local animStoppedConn = animTrack.Stopped:Connect(function()
+			if isInvisible then animationTrickery() end
+		end)
+		table.insert(connections.SemiInvisible, animStoppedConn)
+
+		task.delay(0, function()
+			animTrack.TimePosition = 0.7
+			task.delay(1, function()
+				animTrack:AdjustSpeed(math.huge)
+			end)
+		end)
+	end
+end
+
+local function setupGodmode()
+	local char = player.Character or player.CharacterAdded:Wait()
+	local hum = char:WaitForChild("Humanoid")
+
+	local mt = getrawmetatable(game)
+	local oldNC = mt.__namecall
+	local oldNI = mt.__newindex
+	setreadonly(mt, false)
+
+	mt.__namecall = newcclosure(function(self, ...)
+		local m = getnamecallmethod()
+		if self == hum then
+			if m == "ChangeState" and select(1, ...) == Enum.HumanoidStateType.Dead then return end
+			if m == "SetStateEnabled" then
+				local st, en = ...
+				if st == Enum.HumanoidStateType.Dead and en == true then return end
+			end
+			if m == "Destroy" then return end
+		end
+		if self == char and m == "BreakJoints" then return end
+		return oldNC(self, ...)
+	end)
+
+	mt.__newindex = newcclosure(function(self, k, v)
+		if self == hum then
+			if k == "Health" and type(v) == "number" and v <= 0 then return end
+			if k == "MaxHealth" and type(v) == "number" and v < hum.MaxHealth then return end
+			if k == "BreakJointsOnDeath" and v == true then return end
+			if k == "Parent" and v == nil then return end
+		end
+		return oldNI(self, k, v)
+	end)
+
+	setreadonly(mt, true)
+end
+
+-------------------------------------------------
+-- INVISIBLE CONTROL (STABLE FIXED)
+-------------------------------------------------
+local function enableInvisibility()
+	if not player.Character or player.Character.Humanoid.Health <= 0 then return end
+	removeFolders()
+	setupGodmode()
+
+	if doClone() then
+		task.wait(0.15)
+		animationTrickery()
+
+		connection = RunService.Heartbeat:Connect(function()
+			if not isInvisible then return end
+			if player.Character and oldRoot and player.Character.PrimaryPart then
+				local root = player.Character.PrimaryPart
+				local hum = player.Character.Humanoid
+				local cf = root.CFrame - Vector3.new(0, hum.HipHeight + (root.Size.Y / 2) - 1 + yOffset, 0)
+				oldRoot.CFrame = cf * CFrame.Angles(math.rad(180),0,0)
+				pcall(function() oldRoot.AssemblyLinearVelocity = root.AssemblyLinearVelocity end)
+				oldRoot.CanCollide = false
+			end
+		end)
+
+		table.insert(connections.SemiInvisible, connection)
+	end
+end
+
+local function disableInvisibility()
+	if animTrack then animTrack:Stop() animTrack:Destroy() animTrack = nil end
+	if connection then connection:Disconnect() end
+	revertClone()
+	removeFolders()
+end
+
+toggleBtn.MouseButton1Click:Connect(function()
+	isInvisible = not isInvisible
+	if isInvisible then
+		toggleBtn.Text = "invisible on"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(200,30,30)
+		enableInvisibility()
+	else
+		toggleBtn.Text = "invisible off"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+		disableInvisibility()
+	end
+end)
+
+-------------------------------------------------
+-- WALK TO BASE (SPEED FIXED)
+-------------------------------------------------
+local function getBase()
+	local plots = Workspace:FindFirstChild("Plots")
+	if not plots then return end
+	for _, p in ipairs(plots:GetChildren()) do
+		local sign = p:FindFirstChild("PlotSign")
+		local base = p:FindFirstChild("DeliveryHitbox")
+		if sign and sign:FindFirstChild("YourBase") and sign.YourBase.Enabled and base then
+			return base.Position
+		end
+	end
+end
+
+local function walkToBase()
+	local char = player.Character
+	if not char or not char.PrimaryPart then return end
+
+	local target = getBase()
+	if not target then
+		status.Text = "Base Not Found"
+		return
+	end
+
+	local root = char.PrimaryPart
+	local hum = char:FindFirstChild("Humanoid")
+	if not hum then return end
+
+	local speed = hum.WalkSpeed * walkSpeedMultiplier
+
+	walking = true
+	status.Text = "Walking..."
+
+	local startPos = root.Position
+	local endPos = Vector3.new(target.X, root.Position.Y, target.Z)
+	local distance = (startPos - endPos).Magnitude
+	local stepCount = math.ceil(distance / 4)
+	local stepVector = (endPos - startPos) / stepCount
+	local stepTime = 4 / speed
+
+	for i = 1, stepCount do
+		if not walking then break end
+		local nextPos = startPos + stepVector * i
+		local tween = TweenService:Create(root, TweenInfo.new(stepTime, Enum.EasingStyle.Linear), {CFrame = CFrame.new(nextPos)})
+		tween:Play()
+		tween.Completed:Wait()
+	end
+
+	if walking then status.Text = "Reached Base" end
+	walking = false
+end
+
+walkBtn.MouseButton1Click:Connect(function()
+	if walking then
+		walking = false
+		status.Text = "Stopped"
+	else
+		task.spawn(walkToBase)
+	end
+end)
